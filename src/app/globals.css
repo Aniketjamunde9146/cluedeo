@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+:root {
+  --font-nunito: "Nunito", -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", system-ui, sans-serif;
+
+  /* ---- Brand tokens ---- */
+  --color-bg: #0a0a10;
+  --color-text: #000000;
+
+  --color-bg-elevated: #101018;
+  --color-surface: #15151f;
+  --color-border: #ffffff14;
+  --color-text: #ededf1;
+  --color-text-muted: #9a9aa8;
+  --color-accent: #a78bfa;
+  --color-accent-soft: #a78bfa26;
+  --color-accent-strong: #8b5cf6;
+  --color-signal: #fbbf24; /* warm "live lead" ping */
+}
+
+/* Wire brand + font tokens into Tailwind's theme so utility classes like
+   `bg-bg`, `text-accent`, `border-border`, `font-heading` all work. */
+@theme inline {
+  --font-heading: var(--font-display), var(--font-nunito), sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+
+  --color-bg: var(--color-bg);
+  --color-bg-elevated: var(--color-bg-elevated);
+  --color-surface: var(--color-surface);
+  --color-border: var(--color-border);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-accent: var(--color-accent);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-strong: var(--color-accent-strong);
+  --color-signal: var(--color-signal);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem; /* keeps anchored sections clear of the sticky navbar */
+}
+
+body {
+  font-family: var(--font-nunito);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: #ffffff;
+}
+
+/* thin, unobtrusive scrollbar that picks up the accent on hover */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #ffffff22;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-soft);
+}
+
+/* keep focus visible for keyboard users, everywhere */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Reusable glass surface for the navbar / footer / cards */
+.glass {
+  background: color-mix(in srgb, var(--color-bg-elevated) 78%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Signature "live signal" ping — a small pulsing dot used by the brand mark */
+.signal-dot {
+  position: relative;
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-signal);
+  flex-shrink: 0;
+}
+.signal-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--color-signal);
+  animation: signal-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes signal-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  75%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* ---- ClueFind signature: the "trail" ----
+   A dashed connector that visually threads related pieces of evidence
+   together, like string on a detective's board. Used wherever one clue
+   leads to the next: keyword -> filter -> URL, or pillar -> pillar. */
+.trail-line-x {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--color-accent) 0 6px,
+    transparent 6px 14px
+  );
+  height: 1.5px;
+}
+.trail-line-y {
+  background-image: repeating-linear-gradient(
+    180deg,
+    var(--color-accent) 0 6px,
+    transparent 6px 14px
+  );
+  width: 1.5px;
+}
+
+/* A small rotated "pin" mark used on case-file style cards */
+.pin-mark {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+
+/* case-file mono eyebrow tag */
+.case-tag {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* faint grain texture, reused across sections for the "case file paper" feel */
+.grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
