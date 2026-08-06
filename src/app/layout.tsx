@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import Navbar from "@/app/components/Navbar";
+import ChatWidget from "@/app/components/ChatWidget";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -23,38 +25,48 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Corrected to the real domain — was previously cluedeo.vercel.app,
+// which would have shipped wrong canonical URLs, OG/Twitter image
+// URLs, and JSON-LD `url` to search engines and social crawlers.
+const SITE_URL = "https://cluefind.vercel.app";
+const SITE_NAME = "ClueFind";
+const SITE_DESCRIPTION =
+  "Turn a keyword into an optimized lead-search URL in seconds. ClueFind follows the trail — keyword, freshness filter, straight to your next client.";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://cluedeo.vercel.app"),
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
   title: {
-    default: "ClueFind — Every post is a clue.",
-    template: "%s | ClueFind",
+    default: `${SITE_NAME} — Every post is a clue.`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Turn social posts into leads. ClueFind follows the trail — likes, comments, replies — straight to your next client.",
+  description: SITE_DESCRIPTION,
   keywords: [
-    "social media leads",
     "lead generation tool",
-    "comment generator",
-    "social listening",
+    "linkedin search builder",
+    "social media leads",
+    "sales prospecting tool",
     "ClueFind",
+    "cluefind",
   ],
-  authors: [{ name: "ClueFind" }],
+  authors: [{ name: SITE_NAME }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  formatDetection: { telephone: false },
   icons: { icon: "/logo.png" },
   openGraph: {
-    title: "ClueFind — Every post is a clue.",
-    description:
-      "Turn social posts into leads. ClueFind follows the trail — likes, comments, replies — straight to your next client.",
-    url: "https://cluedeo.vercel.app",
-    siteName: "ClueFind",
-    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "ClueFind" }],
+    title: `${SITE_NAME} — Every post is a clue.`,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: SITE_NAME }],
     type: "website",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClueFind — Every post is a clue.",
-    description:
-      "Turn social posts into leads. ClueFind follows the trail — likes, comments, replies — straight to your next client.",
+    title: `${SITE_NAME} — Every post is a clue.`,
+    description: SITE_DESCRIPTION,
     images: ["/og-image.png"],
   },
   robots: {
@@ -68,7 +80,7 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://cluedeo.vercel.app",
+    canonical: SITE_URL,
   },
   verification: {
     google: "TJJaEJ19AITDpVDqe_l8evQeluMEtt9dRJuBZLJz8oY",
@@ -79,7 +91,22 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#F7F9FC",
+  themeColor: "#000000",
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: SITE_NAME,
+  url: SITE_URL,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description: SITE_DESCRIPTION,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
 };
 
 export default function RootLayout({
@@ -92,7 +119,22 @@ export default function RootLayout({
       lang="en"
       className={`${nunito.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="bg-bg font-sans text-text antialiased">{children}</body>
+      <body className="bg-bg font-sans text-text antialiased">
+        {/* Structured data — helps Google understand ClueFind as a product, not just a page */}
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+        {/* Rendered once, globally — every route shares this one navbar
+            instance instead of each page mounting its own. */}
+        <Navbar />
+        {children}
+        {/* Floating site-help widget — mounted once here so it follows
+            visitors across every route. Client-only, renders nothing
+            until opened, so it has no effect on indexed page content. */}
+        <ChatWidget />
+      </body>
     </html>
   );
 }

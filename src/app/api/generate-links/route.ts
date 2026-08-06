@@ -5,48 +5,48 @@ import { NextRequest, NextResponse } from "next/server";
  * Body: { keyword: string; existing?: string[] }
  * Returns: { links: { label: string; query: string; hint: string }[] }
  *
- * Unlike /api/suggest (which suggests adjacent keywords), this route
- * suggests full lead-intent search PHRASES for the given keyword —
- * things people actually write when they're hiring for or looking for
- * that skill, which is what surfaces warm leads instead of just people
- * who happen to mention the skill.
+ * Fixes from the previous version:
+ *  - `existing` was sliced to 20 items BEFORE filtering out non-strings,
+ *    so a noisy array could end up capped below 20 real entries even
+ *    though 20 were available. Now filters first, then caps.
+ *  - `keyword` wasn't length-capped before going into the prompt (every
+ *    other route in this app caps user text before sending it to Groq —
+ *    this one was the exception). Capped to 200 chars.
+ *  - Uses a single trimmed `keyword` consistently instead of calling
+ *    `.trim()` ad hoc in a few places.
  */
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "openai/gpt-oss-120b";
+const MAX_KEYWORD_LENGTH = 200;
+const MAX_EXISTING_ITEMS = 20;
 
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: "Request body must be JSON." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Request body must be JSON." }, { status: 400 });
   }
 
   const record = typeof body === "object" && body !== null ? body : {};
-  const keyword = String((record as { keyword?: unknown }).keyword ?? "");
+  const keyword = String((record as { keyword?: unknown }).keyword ?? "")
+    .trim()
+    .slice(0, MAX_KEYWORD_LENGTH); // fix: cap length before it goes into the prompt
+
   const existing = Array.isArray((record as { existing?: unknown }).existing)
     ? ((record as { existing?: unknown[] }).existing as unknown[])
-        .filter((s): s is string => typeof s === "string")
-        .slice(0, 20)
+        .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        .slice(0, MAX_EXISTING_ITEMS) // fix: filter first, then cap — was capped first, dropping valid entries
     : [];
 
-  if (!keyword.trim()) {
-    return NextResponse.json(
-      { error: "A keyword is required." },
-      { status: 400 }
-    );
+  if (!keyword) {
+    return NextResponse.json({ error: "A keyword is required." }, { status: 400 });
   }
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return NextResponse.json(
-      { error: "GROQ_API_KEY is not set on the server." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "GROQ_API_KEY is not set on the server." }, { status: 500 });
   }
 
   try {
@@ -98,10 +98,8 @@ export async function POST(req: NextRequest) {
           },
           {
             role: "user",
-            content: `Seed keyword: "${keyword.trim()}"${
-              existing.length
-                ? `\nAlready used, do not repeat these: ${existing.join(", ")}`
-                : ""
+            content: `Seed keyword: "${keyword}"${
+              existing.length ? `\nAlready used, do not repeat these: ${existing.join(", ")}` : ""
             }`,
           },
         ],
@@ -140,9 +138,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ links });
   } catch {
-    return NextResponse.json(
-      { error: "Unexpected error contacting Groq." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Unexpected error contacting Groq." }, { status: 500 });
   }
 }

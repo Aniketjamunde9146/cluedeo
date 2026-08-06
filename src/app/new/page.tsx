@@ -1,26 +1,253 @@
 "use client";
 
-import { useRef, useState, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+/**
+ * /new — Link Generator page
+ *
+ * Changes from the previous version:
+ *  - Swapped GSAP/useGSAP for Framer Motion + a small self-built
+ *    IntersectionObserver hook (`useInView`). The rest of the app (Hero)
+ *    already runs on Framer Motion, so this removes a second animation
+ *    library that was only here for this one page.
+ *  - Added a tiny shadcn-style local UI kit (`cn`, `Button`, `Pill`,
+ *    `Reveal`) so every interactive element shares one variant system
+ *    instead of one-off className strings.
+ *  - Added a custom scroll-progress rail (`useScrollProgress`, no library)
+ *    matching the glow-rail already used on the About section.
+ *  - Fixed real bugs — see inline `// fix:` comments.
+ *  - Tightened mobile layout: 16px input font (prevents iOS auto-zoom),
+ *    viewport-relative result list height, full-width stacked actions.
+ */
+
 import {
-  ArrowLeft,
-  Sparkles,
-  Copy,
-  Check,
-  ExternalLink,
-  Loader2,
-  Search,
-  Target,
-  Megaphone,
-  RefreshCw,
-  AlertCircle,
-  Wand2,
-} from "lucide-react";
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
+  forwardRef,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  Suspense,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { motion, useReducedMotion } from "framer-motion";
+import type { IconType } from "react-icons";
+import {
+  LuArrowLeft,
+  LuSparkles,
+  LuCopy,
+  LuCheck,
+  LuExternalLink,
+  LuLoaderCircle,
+  LuSearch,
+  LuTarget,
+  LuMegaphone,
+  LuRefreshCw,
+  LuCircleAlert,
+  LuWand,
+} from "react-icons/lu";
 import StatusState, { SkeletonRows } from "@/app/components/Statusstate";
 
-/* Same mapping as the Project Documentation's Time Filter table */
+/* ------------------------------------------------------------------ */
+/* Local "shadcn-style" primitives — variant-driven, prop-first,       */
+/* zero extra deps. Worth lifting into /components/ui/* later if more  */
+/* pages start reusing them.                                           */
+/* ------------------------------------------------------------------ */
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+/** Bare IntersectionObserver hook — our own scroll-reveal trigger,
+ *  no scroll library involved. Fires once, then disconnects. */
+function useInView<T extends HTMLElement>(options?: IntersectionObserverInit) {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setInView(true); // no IO support — just show content
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.2, rootMargin: "0px 0px -10% 0px", ...options }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [options]);
+
+  return { ref, inView };
+}
+
+/** Whole-page scroll progress, driven by our own rAF-throttled listener. */
+function useScrollProgress() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        setProgress(max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0);
+      });
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, []);
+
+  return progress;
+}
+
+function ScrollProgressRail() {
+  const progress = useScrollProgress();
+  return (
+    <div
+      aria-hidden="true"
+      className="fixed left-0 right-0 top-0 z-50 h-[3px] bg-white/[0.06]"
+    >
+      <div
+        className="h-full origin-left"
+        style={{
+          transform: `scaleX(${progress})`,
+          background:
+            "linear-gradient(90deg, var(--color-accent-strong), var(--color-accent))",
+        }}
+      />
+    </div>
+  );
+}
+
+/** Blur/fade/slide-up entrance. `mode="mount"` plays immediately (above
+ *  the fold); `mode="scroll"` waits for `useInView`. Respects
+ *  prefers-reduced-motion by skipping straight to the final state. */
+function Reveal({
+  children,
+  className,
+  delay = 0,
+  y = 16,
+  blur = 6,
+  mode = "scroll",
+}: {
+  children: ReactNode;
+  className?: string;
+  delay?: number;
+  y?: number;
+  blur?: number;
+  mode?: "mount" | "scroll";
+}) {
+  const prefersReduced = useReducedMotion();
+  const { ref, inView } = useInView<HTMLDivElement>();
+  const show = mode === "mount" || inView;
+
+  if (prefersReduced) {
+    return <div className={className}>{children}</div>;
+  }
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y, filter: `blur(${blur}px)` }}
+      animate={show ? { opacity: 1, y: 0, filter: "blur(0px)" } : undefined}
+      transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+type ButtonVariant = "solid" | "outline" | "ghost" | "dashed" | "icon";
+type ButtonSize = "sm" | "md" | "icon";
+
+const buttonVariants: Record<ButtonVariant, string> = {
+  solid: "bg-white text-black hover:bg-white/90",
+  outline:
+    "border border-border text-text-secondary bg-transparent hover:border-border-strong hover:text-text",
+  ghost: "text-text-secondary bg-transparent hover:bg-white/10 hover:text-text",
+  dashed:
+    "border border-dashed border-border-strong bg-white/[0.02] text-text-secondary hover:border-accent hover:bg-white/[0.04] hover:text-accent",
+  icon: "text-text-muted bg-transparent hover:bg-white/10 hover:text-text",
+};
+
+const buttonSizes: Record<ButtonSize, string> = {
+  sm: "h-9 px-4 text-[12px] rounded-full",
+  md: "min-h-[44px] px-5 text-[13px] rounded-[16px]",
+  icon: "h-9 w-9 rounded-lg",
+};
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}
+
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = "solid", size = "md", ...props },
+  ref
+) {
+  return (
+    <button
+      ref={ref}
+      className={cn(
+        "inline-flex items-center justify-center gap-1.5 font-semibold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+        buttonVariants[variant],
+        buttonSizes[size],
+        className
+      )}
+      {...props}
+    />
+  );
+});
+
+/** Toggle-style pill, used for the freshness filter row. */
+function Pill({
+  active,
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        "min-h-[36px] rounded-full px-3 py-1.5 text-[12px] font-medium transition-all duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/50",
+        active
+          ? "shadow-[0_4px_14px_rgba(245,166,35,0.35)] text-black"
+          : "border border-border bg-white/[0.04] text-text-secondary hover:bg-white/[0.08]"
+      )}
+      style={
+        active
+          ? {
+              background:
+                "linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))",
+            }
+          : undefined
+      }
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Product data                                                        */
+/* ------------------------------------------------------------------ */
+
 const TIME_FILTERS = [
   { label: "1h", code: "r3600" },
   { label: "2h", code: "r7200" },
@@ -30,6 +257,8 @@ const TIME_FILTERS = [
   { label: "7d", code: "r604800" },
   { label: "30d", code: "r2592000" },
 ] as const;
+
+const DEFAULT_FILTER_LABEL = "24h";
 
 type Tone = "direct" | "hiring" | "looking" | "ai";
 
@@ -41,30 +270,11 @@ type LinkItem = {
   tone: Tone;
 };
 
-const TONE_STYLES: Record<
-  Tone,
-  { badge: string; icon: typeof Search; dot: string }
-> = {
-  direct: {
-    badge: "bg-blue-50 text-[#2D5BFF]",
-    icon: Search,
-    dot: "bg-[#2D5BFF]",
-  },
-  hiring: {
-    badge: "bg-emerald-50 text-emerald-600",
-    icon: Megaphone,
-    dot: "bg-emerald-500",
-  },
-  looking: {
-    badge: "bg-amber-50 text-amber-600",
-    icon: Target,
-    dot: "bg-amber-500",
-  },
-  ai: {
-    badge: "bg-violet-50 text-violet-600",
-    icon: Sparkles,
-    dot: "bg-violet-500",
-  },
+const TONE_STYLES: Record<Tone, { badge: string; icon: IconType }> = {
+  direct: { badge: "bg-blue-500/10 text-blue-400", icon: LuSearch },
+  hiring: { badge: "bg-emerald-500/10 text-emerald-400", icon: LuMegaphone },
+  looking: { badge: "bg-accent-soft text-accent", icon: LuTarget },
+  ai: { badge: "bg-violet-500/10 text-violet-400", icon: LuSparkles },
 };
 
 const buildUrl = (query: string, code: string) =>
@@ -72,17 +282,10 @@ const buildUrl = (query: string, code: string) =>
     query
   )}&sortBy=%22DATE_POSTED%22&datePosted=%5B%22${code}%22%5D`;
 
-/* Instant, deterministic starter set — no AI needed for these three */
 const buildTemplateLinks = (keyword: string): LinkItem[] => {
   const k = keyword.trim();
   return [
-    {
-      id: "direct",
-      label: k,
-      hint: "Posts that mention this directly",
-      query: k,
-      tone: "direct",
-    },
+    { id: "direct", label: k, hint: "Posts that mention this directly", query: k, tone: "direct" },
     {
       id: "hiring",
       label: `Hiring ${k}`,
@@ -100,21 +303,24 @@ const buildTemplateLinks = (keyword: string): LinkItem[] => {
   ];
 };
 
+/* ------------------------------------------------------------------ */
+/* Page                                                                 */
+/* ------------------------------------------------------------------ */
+
 function GeneratorPage() {
-  const container = useRef<HTMLDivElement>(null);
-  const resultsRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const resultsRef = useRef<HTMLDivElement>(null);
 
-  const initialKeyword = searchParams.get("keyword") ?? "";
-  const initialLabel = searchParams.get("filter") ?? "24h";
+  const initialKeyword = (searchParams.get("keyword") ?? "").trim(); // fix: trim URL param
+  const initialLabel = searchParams.get("filter") ?? DEFAULT_FILTER_LABEL;
   const initialFilter =
-    TIME_FILTERS.find((f) => f.label === initialLabel) ?? TIME_FILTERS[4];
+    TIME_FILTERS.find((f) => f.label === initialLabel) ??
+    TIME_FILTERS.find((f) => f.label === DEFAULT_FILTER_LABEL) ??
+    TIME_FILTERS[0]; // fix: no more hardcoded array index (was TIME_FILTERS[4])
 
   const [keyword, setKeyword] = useState(initialKeyword);
-  const [filter, setFilter] = useState<(typeof TIME_FILTERS)[number]>(
-    initialFilter
-  );
+  const [filter, setFilter] = useState<(typeof TIME_FILTERS)[number]>(initialFilter);
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [generating, setGenerating] = useState(false);
   const [checkingSpelling, setCheckingSpelling] = useState(false);
@@ -122,87 +328,57 @@ function GeneratorPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [correctionNotice, setCorrectionNotice] = useState<{
-    from: string;
-    to: string;
-  } | null>(null);
+  const [correctionNotice, setCorrectionNotice] = useState<{ from: string; to: string } | null>(null);
 
-  /* Page entrance */
-  useGSAP(
-    () => {
-      const reduced = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-      if (reduced) return;
+  const mountedRef = useRef(true);
+  const generateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const busy = generating || checkingSpelling; // fix: single source of truth for "can't submit right now"
 
-      gsap
-        .timeline({ defaults: { ease: "power3.out" } })
-        .from(".gen-back", { opacity: 0, y: -10, duration: 0.5 })
-        .from(".gen-heading", { opacity: 0, y: 24, duration: 0.7 }, "-=0.25")
-        .from(
-          ".gen-panel",
-          { opacity: 0, y: 30, scale: 0.98, duration: 0.7 },
-          "-=0.35"
-        );
-    },
-    { scope: container }
-  );
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (generateTimeoutRef.current) clearTimeout(generateTimeoutRef.current);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
-  /* Stagger-reveal cards whenever the link list changes */
-  useGSAP(
-    () => {
-      const reduced = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-      if (reduced || links.length === 0) return;
+  // fix: auto-scroll the results panel down when the AI appends more
+  // links, so newly added cards aren't hidden below the fold of the
+  // scrollable list. Only fires once links grow past the initial 3.
+  useEffect(() => {
+    if (links.length > 3 && resultsRef.current) {
+      const el = resultsRef.current;
+      requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
+    }
+  }, [links.length]);
 
-      gsap.from(".link-card:not(.link-card-seen)", {
-        opacity: 0,
-        y: 18,
-        scale: 0.97,
-        duration: 0.45,
-        stagger: 0.08,
-        ease: "power3.out",
-        onComplete: () => {
-          document
-            .querySelectorAll(".link-card")
-            .forEach((el) => el.classList.add("link-card-seen"));
-        },
+  const correctSpelling = useCallback(async (raw: string): Promise<string> => {
+    setCheckingSpelling(true);
+    setCorrectionNotice(null);
+    try {
+      const res = await fetch("/api/correct-keyword", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: raw }),
       });
-    },
-    { dependencies: [links.length], scope: resultsRef }
-  );
-
-  /* Ask the AI to fix typos before we build search links from them.
-     Never blocks generation — if this fails for any reason we just
-     fall back to whatever the user typed. */
-  const correctSpelling = useCallback(
-    async (raw: string): Promise<string> => {
-      setCheckingSpelling(true);
-      setCorrectionNotice(null);
-      try {
-        const res = await fetch("/api/correct-keyword", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keyword: raw }),
-        });
-        if (!res.ok) return raw;
-        const data = await res.json();
-        if (data?.wasCorrected && typeof data.corrected === "string") {
-          setCorrectionNotice({ from: raw.trim(), to: data.corrected });
-          return data.corrected;
-        }
-        return raw;
-      } catch {
-        return raw;
-      } finally {
-        setCheckingSpelling(false);
+      if (!res.ok) return raw;
+      const data = await res.json();
+      if (data?.wasCorrected && typeof data.corrected === "string") {
+        if (mountedRef.current) setCorrectionNotice({ from: raw.trim(), to: data.corrected });
+        return data.corrected;
       }
-    },
-    []
-  );
+      return raw;
+    } catch {
+      return raw;
+    } finally {
+      if (mountedRef.current) setCheckingSpelling(false);
+    }
+  }, []);
 
   const handleGenerate = useCallback(async () => {
+    if (busy) return; // fix: block concurrent submits (e.g. rapid Enter presses)
     const trimmed = keyword.trim();
     if (!trimmed) {
       setFormError("Enter a keyword first.");
@@ -213,71 +389,66 @@ function GeneratorPage() {
     setGenerating(true);
 
     const finalKeyword = await correctSpelling(trimmed);
-    if (finalKeyword !== trimmed) {
-      setKeyword(finalKeyword);
-    }
+    if (!mountedRef.current) return;
+    if (finalKeyword !== trimmed) setKeyword(finalKeyword);
 
-    // brief, deliberate pause so the result feels "assembled" rather
-    // than snapping in — not a network call, purely perceptual
-    window.setTimeout(() => {
+    if (generateTimeoutRef.current) clearTimeout(generateTimeoutRef.current); // fix: clear any stale timer first
+    generateTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
       setLinks(buildTemplateLinks(finalKeyword));
       setGenerating(false);
     }, 350);
-  }, [keyword, correctSpelling]);
+  }, [busy, keyword, correctSpelling]);
 
   const handleGenerateMore = useCallback(async () => {
     const trimmed = keyword.trim();
-    if (!trimmed) return;
+    if (!trimmed || aiLoading) return;
     setAiLoading(true);
     setAiError(null);
     try {
       const res = await fetch("/api/generate-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          keyword: trimmed,
-          existing: links.map((l) => l.query),
-        }),
+        body: JSON.stringify({ keyword: trimmed, existing: links.map((l) => l.query) }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error ?? "Something went wrong.");
-      }
-      const fresh: LinkItem[] = (data.links ?? [])
-        .filter(
-          (l: { query: string }) =>
-            !links.some(
-              (existingLink) =>
-                existingLink.query.toLowerCase() === l.query.toLowerCase()
-            )
-        )
-        .map((l: { label: string; query: string; hint: string }, i: number) => ({
-          id: `ai-${Date.now()}-${i}`,
-          label: l.label,
-          hint: l.hint,
-          query: l.query,
-          tone: "ai" as const,
-        }));
+      if (!res.ok) throw new Error(data?.error ?? "Something went wrong.");
 
+      // fix: dedupe against existing links AND within the same AI batch
+      // (previously two near-identical suggestions in one response could
+      // both slip through since only `links` was checked).
+      const seen = new Set(links.map((l) => l.query.toLowerCase()));
+      const fresh: LinkItem[] = [];
+      for (const l of (data.links ?? []) as { label: string; query: string; hint: string }[]) {
+        const key = l.query.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        fresh.push({ id: `ai-${Date.now()}-${fresh.length}`, label: l.label, hint: l.hint, query: l.query, tone: "ai" });
+      }
+
+      if (!mountedRef.current) return;
       if (fresh.length === 0) {
         setAiError("No new ideas came back — try again in a moment.");
       } else {
         setLinks((prev) => [...prev, ...fresh]);
       }
     } catch (err) {
-      setAiError(
-        err instanceof Error ? err.message : "Couldn't reach the AI service."
-      );
+      if (mountedRef.current) {
+        setAiError(err instanceof Error ? err.message : "Couldn't reach the AI service.");
+      }
     } finally {
-      setAiLoading(false);
+      if (mountedRef.current) setAiLoading(false);
     }
-  }, [keyword, links]);
+  }, [keyword, links, aiLoading]);
 
   const handleCopy = useCallback(async (id: string, url: string) => {
     try {
       await navigator.clipboard.writeText(url);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current); // fix: avoid an older timer clobbering a newer copy
       setCopiedId(id);
-      setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1600);
+      copyTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) setCopiedId((c) => (c === id ? null : c));
+      }, 1600);
     } catch {
       /* clipboard unavailable — no-op */
     }
@@ -287,346 +458,322 @@ function GeneratorPage() {
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "ClueFind Link Generator",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    description:
+      "Turn a keyword into direct, hiring, and looking-for LinkedIn search links, filtered by freshness.",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  };
+
   return (
     <main
       id="main-content"
-      ref={container}
-      className="liquid-bg relative min-h-screen w-full overflow-hidden px-4 py-12 sm:px-6 sm:py-16"
+      className="relative min-h-screen w-full overflow-hidden bg-bg px-4 py-10 sm:px-6 sm:py-16"
     >
-      {/* Liquid glass background blobs */}
+      <ScrollProgressRail />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="liquid-blob liquid-blob-a" />
-        <div className="liquid-blob liquid-blob-b" />
-        <div className="liquid-blob liquid-blob-c" />
+        <div className="gen-blob gen-blob-a" />
+        <div className="gen-blob gen-blob-b" />
       </div>
+      <div aria-hidden className="grain pointer-events-none absolute inset-0 -z-10 opacity-[0.03] mix-blend-overlay" />
 
-      <div className="mx-auto max-w-2xl">
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="gen-back mb-8 flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition-colors hover:text-slate-800 sm:mb-10"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back to home
-        </button>
-
-        <div className="gen-heading mb-8 text-center sm:mb-10">
-          <h1 className="text-[26px] font-extrabold tracking-tight text-slate-900 sm:text-[34px]">
-            Generate your{" "}
-            <span className="bg-gradient-to-r from-[#2D5BFF] to-[#F5A524] bg-clip-text text-transparent">
-              lead links
-            </span>
-          </h1>
-          <p className="mx-auto mt-2 max-w-md text-[13px] text-slate-500 sm:text-[14px]">
-            One keyword becomes several angles — people doing it, people
-            hiring for it, and people looking for it.
-          </p>
-        </div>
-
-        <div className="gen-panel liquid-panel rounded-[28px] p-5 sm:p-8">
-          {/* Keyword + filter row */}
-          <label htmlFor="keyword-input" className="mb-2 block text-[13px] font-semibold text-slate-600">
-            Keyword
-          </label>
-          <div className="relative">
-            <input
-              id="keyword-input"
-              type="text"
-              value={keyword}
-              onChange={(e) => {
-                setKeyword(e.target.value);
-                if (formError) setFormError(null);
-                if (correctionNotice) setCorrectionNotice(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleGenerate();
-              }}
-              placeholder="e.g. flutter developer"
-              aria-invalid={!!formError}
-              aria-describedby={formError ? "keyword-error" : undefined}
-              className={`liquid-input w-full rounded-[16px] px-4 py-3 text-[14px] text-slate-800 outline-none transition-all ${
-                formError ? "liquid-input-error" : ""
-              }`}
-            />
-            {checkingSpelling && (
-              <Loader2 className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
-            )}
-          </div>
-
-          {formError && (
-            <p
-              id="keyword-error"
-              role="alert"
-              className="mt-1.5 flex items-center gap-1 text-[12px] text-red-500"
-            >
-              <AlertCircle className="h-3 w-3" />
-              {formError}
-            </p>
-          )}
-
-          {correctionNotice && !formError && (
-            <p className="mt-1.5 flex items-center gap-1 text-[12px] text-[#2D5BFF]">
-              <Wand2 className="h-3 w-3" />
-              Fixed spelling: “{correctionNotice.from}” → “
-              {correctionNotice.to}”
-            </p>
-          )}
-
-          <label className="mb-2 mt-5 block text-[13px] font-semibold text-slate-600">
-            Freshness
-          </label>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Freshness filter">
-            {TIME_FILTERS.map((f) => (
-              <button
-                key={f.label}
-                type="button"
-                onClick={() => setFilter(f)}
-                aria-pressed={f.label === filter.label}
-                className={`min-h-[36px] rounded-full px-3 py-1.5 text-[12px] font-medium transition-all duration-200 ${
-                  f.label === filter.label
-                    ? "liquid-pill-active text-white"
-                    : "liquid-pill text-slate-500"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          <button
+      <div className="mx-auto w-full max-w-2xl">
+        <Reveal mode="mount">
+          <Button
             type="button"
-            onClick={handleGenerate}
-            disabled={generating || checkingSpelling}
-            className="liquid-cta mt-6 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[16px] py-3 text-[13px] font-semibold text-white transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/")}
+            className="mb-8 !px-0 !justify-start gap-1.5 text-text-secondary sm:mb-10"
           >
-            {checkingSpelling ? (
-              <>
-                <Wand2 className="h-4 w-4 animate-pulse" />
-                Checking spelling…
-              </>
-            ) : generating ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Assembling links…
-              </>
-            ) : (
-              <>Generate</>
-            )}
-          </button>
+            <LuArrowLeft className="h-3.5 w-3.5" />
+            Back to home
+          </Button>
+        </Reveal>
 
-          {/* Loading state: heading + skeleton, not a skeleton alone */}
-          {generating && (
-            <div className="mt-6 space-y-3">
-              <StatusState
-                variant="loading"
-                density="compact"
-                heading="Assembling your links…"
-                description={`Building direct, hiring, and looking-for angles for "${keyword.trim()}"`}
-              />
-              <SkeletonRows count={3} />
-            </div>
-          )}
-
-          {/* Results */}
-          {!generating && links.length > 0 && (
-            <div className="mt-6">
-              <div
-                ref={resultsRef}
-                className="max-h-[420px] space-y-3 overflow-y-auto pr-1 [scrollbar-width:thin]"
+        <Reveal mode="mount" delay={0.08}>
+          <div className="mb-8 text-center sm:mb-10">
+            <h1 className="font-heading text-[26px] font-bold tracking-tight text-text sm:text-[34px]">
+              Generate your{" "}
+              <span
+                className="bg-clip-text text-transparent"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(90deg, var(--color-accent-strong), var(--color-accent))",
+                }}
               >
-                {links.map((link) => {
-                  const url = buildUrl(link.query, filter.code);
-                  const tone = TONE_STYLES[link.tone];
-                  const Icon = tone.icon;
-                  return (
-                    <div
-                      key={link.id}
-                      className="link-card liquid-card rounded-[18px] p-4 transition-all"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone.badge}`}
-                          >
-                            <Icon className="h-3 w-3" />
-                            {link.label}
-                          </span>
-                          <p className="mt-1.5 text-[12px] text-slate-500">
-                            {link.hint}
-                          </p>
-                          <p className="mt-1 truncate font-mono text-[11px] text-slate-400">
-                            {url}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(link.id, url)}
-                            aria-label="Copy link"
-                            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/70 hover:text-slate-600"
-                          >
-                            {copiedId === link.id ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-500" />
-                            ) : (
-                              <Copy className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpen(url)}
-                            aria-label="Open in LinkedIn"
-                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white transition-colors hover:bg-slate-800"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                lead links
+              </span>
+            </h1>
+            <p className="mx-auto mt-2 max-w-md text-[13px] text-text-secondary sm:text-[14px]">
+              One keyword becomes several angles — people doing it, people
+              hiring for it, and people looking for it.
+            </p>
+          </div>
+        </Reveal>
 
-              {/* Generate more (AI) */}
-              <button
-                type="button"
-                onClick={handleGenerateMore}
-                disabled={aiLoading}
-                className="liquid-dashed mt-4 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-[16px] py-3 text-[13px] font-semibold text-slate-600 transition-colors hover:text-[#2D5BFF] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {aiLoading ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Finding more angles…
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Generate 3 more with AI
-                  </>
+        <Reveal mode="mount" delay={0.16} y={24} blur={8}>
+          <div className="liquid-panel rounded-[24px] p-5 sm:rounded-[28px] sm:p-8">
+            <label htmlFor="keyword-input" className="mb-2 block text-[13px] font-semibold text-text-secondary">
+              Keyword
+            </label>
+            <div className="relative">
+              <input
+                id="keyword-input"
+                type="text"
+                value={keyword}
+                onChange={(e) => {
+                  setKeyword(e.target.value);
+                  if (formError) setFormError(null);
+                  if (correctionNotice) setCorrectionNotice(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !busy) handleGenerate(); // fix: Enter now respects the busy state
+                }}
+                placeholder="e.g. flutter developer"
+                aria-invalid={!!formError}
+                aria-describedby={formError ? "keyword-error" : undefined}
+                autoComplete="off"
+                className={cn(
+                  // fix: 16px base font on mobile prevents iOS Safari's
+                  // auto-zoom-on-focus for inputs under 16px.
+                  "liquid-input w-full rounded-[16px] px-4 py-3 text-base text-text outline-none transition-all sm:text-[14px]",
+                  "focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40",
+                  formError && "liquid-input-error"
                 )}
-              </button>
-
-              {aiError && (
-                <div className="mt-3">
-                  <StatusState
-                    variant="error"
-                    density="compact"
-                    heading="Couldn't generate more links"
-                    description={aiError}
-                    onRetry={handleGenerateMore}
-                  />
-                </div>
+              />
+              {checkingSpelling && (
+                <LuLoaderCircle className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-text-muted" />
               )}
             </div>
-          )}
-        </div>
+
+            {formError && (
+              <p id="keyword-error" role="alert" className="mt-1.5 flex items-center gap-1 text-[12px] text-red-400">
+                <LuCircleAlert className="h-3 w-3" />
+                {formError}
+              </p>
+            )}
+
+            {correctionNotice && !formError && (
+              <p className="mt-1.5 flex items-center gap-1 text-[12px] text-accent">
+                <LuWand className="h-3 w-3" />
+                Fixed spelling: “{correctionNotice.from}” → “{correctionNotice.to}”
+              </p>
+            )}
+
+            <label className="mb-2 mt-5 block text-[13px] font-semibold text-text-secondary">Freshness</label>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Freshness filter">
+              {TIME_FILTERS.map((f) => (
+                <Pill key={f.label} active={f.label === filter.label} onClick={() => setFilter(f)}>
+                  {f.label}
+                </Pill>
+              ))}
+            </div>
+
+            <Button
+              type="button"
+              variant="solid"
+              onClick={handleGenerate}
+              disabled={busy}
+              className="mt-6 w-full"
+            >
+              {checkingSpelling ? (
+                <>
+                  <LuWand className="h-4 w-4 animate-pulse" />
+                  Checking spelling…
+                </>
+              ) : generating ? (
+                <>
+                  <LuLoaderCircle className="h-4 w-4 animate-spin" />
+                  Assembling links…
+                </>
+              ) : (
+                <>Generate</>
+              )}
+            </Button>
+
+            {generating && (
+              <div className="mt-6 space-y-3">
+                <StatusState
+                  variant="loading"
+                  density="compact"
+                  heading="Assembling your links…"
+                  description={`Building direct, hiring, and looking-for angles for "${keyword.trim()}"`}
+                />
+                <SkeletonRows count={3} />
+              </div>
+            )}
+
+            {!generating && links.length > 0 && (
+              <div className="mt-6">
+                <div
+                  ref={resultsRef}
+                  className="max-h-[60vh] space-y-3 overflow-y-auto pr-1 sm:max-h-[420px] [scrollbar-width:thin]"
+                >
+                  {links.map((link, i) => {
+                    const url = buildUrl(link.query, filter.code);
+                    const tone = TONE_STYLES[link.tone];
+                    const Icon = tone.icon;
+                    return (
+                      <Reveal key={link.id} mode="scroll" delay={Math.min(i, 4) * 0.06} y={12} blur={4}>
+                        <div className="liquid-card rounded-[18px] p-4 transition-all">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                  tone.badge
+                                )}
+                              >
+                                <Icon className="h-3 w-3" />
+                                {link.label}
+                              </span>
+                              <p className="mt-1.5 text-[12px] text-text-secondary">{link.hint}</p>
+                              <p className="mt-1 truncate font-mono text-[11px] text-text-muted">{url}</p>
+                            </div>
+                            <div className="flex shrink-0 gap-1.5">
+                              <Button
+                                type="button"
+                                variant="icon"
+                                size="icon"
+                                onClick={() => handleCopy(link.id, url)}
+                                aria-label="Copy link"
+                              >
+                                {copiedId === link.id ? (
+                                  <LuCheck className="h-3.5 w-3.5 text-success" />
+                                ) : (
+                                  <LuCopy className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="solid"
+                                size="icon"
+                                onClick={() => handleOpen(url)}
+                                aria-label="Open in LinkedIn"
+                              >
+                                <LuExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </Reveal>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="dashed"
+                  onClick={handleGenerateMore}
+                  disabled={aiLoading}
+                  className="mt-4 w-full"
+                >
+                  {aiLoading ? (
+                    <>
+                      <LuLoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                      Finding more angles…
+                    </>
+                  ) : (
+                    <>
+                      <LuRefreshCw className="h-3.5 w-3.5" />
+                      Generate 3 more with AI
+                    </>
+                  )}
+                </Button>
+
+                {aiError && (
+                  <div className="mt-3">
+                    <StatusState
+                      variant="error"
+                      density="compact"
+                      heading="Couldn't generate more links"
+                      description={aiError}
+                      onRetry={handleGenerateMore}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </Reveal>
       </div>
 
       <style jsx>{`
-        .liquid-bg {
-          background: linear-gradient(180deg, #eef2ff 0%, #f7f9fc 40%, #fff7ec 100%);
-        }
-        .liquid-blob {
+        .gen-blob {
           position: absolute;
           border-radius: 50%;
-          filter: blur(70px);
-          opacity: 0.45;
+          filter: blur(100px);
+          opacity: 0.35;
           will-change: transform;
         }
-        .liquid-blob-a {
+        .gen-blob-a {
           top: -10%;
           left: -8%;
           width: 420px;
           height: 420px;
-          background: radial-gradient(circle at 30% 30%, #2d5bff, transparent 70%);
-          animation: liquid-float-a 16s ease-in-out infinite;
+          background: radial-gradient(circle at 30% 30%, var(--color-accent-strong), transparent 70%);
+          animation: gen-float-a 16s ease-in-out infinite;
         }
-        .liquid-blob-b {
+        .gen-blob-b {
           bottom: -12%;
           right: -10%;
           width: 460px;
           height: 460px;
-          background: radial-gradient(circle at 60% 40%, #f5a524, transparent 70%);
-          animation: liquid-float-b 20s ease-in-out infinite;
+          background: radial-gradient(circle at 60% 40%, var(--color-accent), transparent 70%);
+          animation: gen-float-b 20s ease-in-out infinite;
         }
-        .liquid-blob-c {
-          top: 35%;
-          right: 20%;
-          width: 260px;
-          height: 260px;
-          background: radial-gradient(circle at 50% 50%, #7c5cff, transparent 70%);
-          animation: liquid-float-c 14s ease-in-out infinite;
-        }
-        @keyframes liquid-float-a {
+        @keyframes gen-float-a {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(40px, 30px) scale(1.08); }
         }
-        @keyframes liquid-float-b {
+        @keyframes gen-float-b {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(-30px, -40px) scale(1.1); }
         }
-        @keyframes liquid-float-c {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          50% { transform: translate(-20px, 25px) scale(0.92); }
-        }
         .liquid-panel {
-          background: rgba(255, 255, 255, 0.6);
-          backdrop-filter: blur(24px) saturate(160%);
-          -webkit-backdrop-filter: blur(24px) saturate(160%);
-          border: 1px solid rgba(255, 255, 255, 0.8);
-          box-shadow:
-            0 8px 32px rgba(31, 41, 55, 0.08),
-            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+          background: color-mix(in srgb, var(--color-surface) 78%, transparent);
+          backdrop-filter: blur(24px) saturate(140%);
+          -webkit-backdrop-filter: blur(24px) saturate(140%);
+          border: 1px solid var(--color-border);
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
         }
         .liquid-input {
-          background: rgba(255, 255, 255, 0.55);
-          border: 1px solid rgba(148, 163, 184, 0.35);
+          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid var(--color-border);
+        }
+        .liquid-input::placeholder {
+          color: var(--color-text-muted);
         }
         .liquid-input:focus {
-          background: rgba(255, 255, 255, 0.85);
-          border-color: #2d5bff;
-          box-shadow: 0 0 0 4px rgba(45, 91, 255, 0.12);
+          background: rgba(0, 0, 0, 0.5);
+          border-color: var(--color-accent);
+          box-shadow: 0 0 0 4px var(--color-accent-soft);
         }
         .liquid-input-error {
           border-color: rgba(248, 113, 113, 0.6) !important;
         }
-        .liquid-pill {
-          background: rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(148, 163, 184, 0.25);
-        }
-        .liquid-pill:hover {
-          background: rgba(255, 255, 255, 0.8);
-        }
-        .liquid-pill-active {
-          background: linear-gradient(135deg, #2d5bff, #4d7bff);
-          box-shadow: 0 4px 14px rgba(45, 91, 255, 0.35);
-        }
-        .liquid-cta {
-          background: linear-gradient(135deg, #0f172a, #1e293b);
-          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
-        }
-        .liquid-cta:hover:not(:disabled) {
-          background: linear-gradient(135deg, #1e293b, #0f172a);
-        }
         .liquid-card {
-          background: rgba(255, 255, 255, 0.55);
-          border: 1px solid rgba(148, 163, 184, 0.25);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--color-border);
         }
         .liquid-card:hover {
-          background: rgba(255, 255, 255, 0.75);
-          border-color: rgba(148, 163, 184, 0.4);
+          background: rgba(255, 255, 255, 0.05);
+          border-color: var(--color-border-strong);
           transform: translateY(-1px);
         }
-        .liquid-dashed {
-          background: rgba(255, 255, 255, 0.4);
-          border: 1.5px dashed rgba(148, 163, 184, 0.5);
-        }
-        .liquid-dashed:hover {
-          border-color: #2d5bff;
-          background: rgba(255, 255, 255, 0.7);
-        }
         @media (prefers-reduced-motion: reduce) {
-          .liquid-blob-a, .liquid-blob-b, .liquid-blob-c {
+          .gen-blob-a, .gen-blob-b {
             animation: none;
           }
         }
