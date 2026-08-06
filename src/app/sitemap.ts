@@ -1,22 +1,50 @@
-import type { MetadataRoute } from "next";
+import type { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://cluedeo.vercel.app";
+  const baseUrl = 'https://cluefind.vercel.app'
 
-  const routes: { path: string; priority: number; changeFrequency: "weekly" | "monthly" | "yearly" }[] = [
-    { path: "", priority: 1.0, changeFrequency: "weekly" },
-    { path: "/aboutus", priority: 0.7, changeFrequency: "monthly" },
-    { path: "/chat", priority: 0.8, changeFrequency: "weekly" },
-    { path: "/leads/comment-generator", priority: 0.8, changeFrequency: "weekly" },
-    { path: "/new", priority: 0.6, changeFrequency: "weekly" },
-    { path: "/privacy-policy", priority: 0.3, changeFrequency: "yearly" },
-    { path: "/terms", priority: 0.3, changeFrequency: "yearly" },
-  ];
-
-  return routes.map((route) => ({
-    url: `${baseUrl}${route.path}`,
-    lastModified: new Date(),
-    changeFrequency: route.changeFrequency,
-    priority: route.priority,
-  }));
+  return [
+    {
+      url: baseUrl,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 1,
+    },
+    {
+      url: `${baseUrl}/aboutus`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/hero`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/leads/comment-generator`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/new`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/privacy-policy`,
+      lastModified: new Date(),
+      changeFrequency: 'yearly',
+      priority: 0.3,
+    },
+    {
+      url: `${baseUrl}/terms`,
+      lastModified: new Date(),
+      changeFrequency: 'yearly',
+      priority: 0.3,
+    },
+  ]
 }
