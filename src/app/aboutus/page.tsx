@@ -11,6 +11,7 @@ import {
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { Metadata } from "next";
 
 /* Register once at module level */
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -44,6 +45,12 @@ const STATS = [
   { value: "<1s", label: "To generate" },
   { value: "0", label: "Lines scraped" },
 ];
+
+export const metadata: Metadata = {
+  title: "About Us",
+  description: "Learn how ClueFind turns social engagement into qualified leads.",
+  alternates: { canonical: "https://cluedeo.vercel.app/aboutus" },
+};
 
 export default function About() {
   const container = useRef<HTMLDivElement>(null);
@@ -202,6 +209,7 @@ export default function About() {
     }
   };
 
+  
   return (
     <section
       ref={container}

@@ -3,9 +3,10 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Leadly",
-  description:
-    "How Leadly collects, uses, and protects your information.",
+  title: "Privacy Policy",
+  description: "ClueFind's privacy policy — how we collect, use, and protect your data.",
+  alternates: { canonical: "https://cluedeo.vercel.app/privacy-policy" },
+  robots: { index: true, follow: true },
 };
 
 const LAST_UPDATED = "July 28, 2026";

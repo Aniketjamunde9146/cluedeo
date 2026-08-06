@@ -3,8 +3,10 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — Leadly",
-  description: "The terms that govern your use of Leadly.",
+  title: "Terms of Service",
+  description: "ClueFind's terms of service and usage conditions.",
+  alternates: { canonical: "https://cluedeo.vercel.app/terms" },
+  robots: { index: true, follow: true },
 };
 
 const LAST_UPDATED = "July 28, 2026";

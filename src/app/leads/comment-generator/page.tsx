@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { Copy, Check, Sparkles, Mail, Phone, MessageCircleReply } from "lucide-react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Comment Generator",
+  description:
+    "Generate high-converting comments and replies to turn social posts into leads.",
+  alternates: { canonical: "https://cluedeo.vercel.app/leads/comment-generator" },
+};
 
 const PROFILE_KEY = "leadly_reply_profile";
 

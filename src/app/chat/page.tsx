@@ -24,6 +24,7 @@ import {
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import StatusState from "@/app/components/Statusstate";
+import { Metadata } from "next";
 
 type Message = {
   id: string;

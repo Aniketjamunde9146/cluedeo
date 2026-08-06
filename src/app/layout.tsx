@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Nunito, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-// Body face — friendly, rounded, highly legible at small sizes.
 const nunito = Nunito({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800", "900"],
@@ -10,9 +9,6 @@ const nunito = Nunito({
   display: "swap",
 });
 
-// Display face — used sparingly for headlines. Geometric and precise,
-// which reads as "evidence, not decoration" — it carries the brand's
-// investigative edge without tipping into gimmick.
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   weight: ["500", "600", "700"],
@@ -20,9 +16,6 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
 });
 
-// Utility face — for case-file labels, eyebrows, filter codes, and
-// timestamps. This is the typeface that says "this is a fact," so it's
-// reserved for exactly that: tags, URLs, codes — never body copy.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
@@ -31,18 +24,57 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClueFind — Every post is a clue.",
+  metadataBase: new URL("https://cluedeo.vercel.app"),
+  title: {
+    default: "ClueFind — Every post is a clue.",
+    template: "%s | ClueFind",
+  },
   description:
     "Turn social posts into leads. ClueFind follows the trail — likes, comments, replies — straight to your next client.",
-  icons: {
-    icon: "/logo.png",
+  keywords: [
+    "social media leads",
+    "lead generation tool",
+    "comment generator",
+    "social listening",
+    "ClueFind",
+  ],
+  authors: [{ name: "ClueFind" }],
+  icons: { icon: "/logo.png" },
+  openGraph: {
+    title: "ClueFind — Every post is a clue.",
+    description:
+      "Turn social posts into leads. ClueFind follows the trail — likes, comments, replies — straight to your next client.",
+    url: "https://cluedeo.vercel.app",
+    siteName: "ClueFind",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "ClueFind" }],
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ClueFind — Every post is a clue.",
+    description:
+      "Turn social posts into leads. ClueFind follows the trail — likes, comments, replies — straight to your next client.",
+    images: ["/og-image.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  alternates: {
+    canonical: "https://cluedeo.vercel.app",
+  },
+  verification: {
+    google: "TJJaEJ19AITDpVDqe_l8evQeluMEtt9dRJuBZLJz8oY",
   },
 };
 
-// Locks the viewport to the device width and forbids the "double-tap to
-// zoom" gesture from fighting with buttons/pills, and paints the browser
-// chrome (status bar on iOS, address bar on Android) in the brand's paper
-// tone so the app reads as a native surface, not a webpage.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,

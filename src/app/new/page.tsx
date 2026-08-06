@@ -19,6 +19,14 @@ import {
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import StatusState, { SkeletonRows } from "@/app/components/Statusstate";
+import { Metadata } from "next";
+
+
+export const metadata: Metadata = {
+  title: "New",
+  description: "Start a new lead search with ClueFind.",
+  alternates: { canonical: "https://cluedeo.vercel.app/new" },
+};
 
 /* Same mapping as the Project Documentation's Time Filter table */
 const TIME_FILTERS = [
