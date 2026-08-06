@@ -15,6 +15,7 @@ const LINKS = [
   { label: "Home", href: "#hero" },
   { label: "About", href: "#about" },
   { label: "AI Guide", href: "/chat" },
+  { label: "Reply Generator", href: "/leads/comment-generator" },
 ];
 
 const isSectionLink = (href: string) => href.startsWith("#");
